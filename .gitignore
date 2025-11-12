@@ -1,5 +1,5 @@
 # Logs
-
+secrets.lua
 logs
 _.log
 npm-debug.log_
@@ -12,6 +12,8 @@ lerna-debug.log*
 
 report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
+
+test*
 # Runtime data
 
 pids

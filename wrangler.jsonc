@@ -4,28 +4,29 @@
 	"main": "src/index.js",
 	"compatibility_date": "2025-11-11",
   
-	"migrations": [
-	  {
-		"tag": "v1",
-		"new_sqlite_classes": [ "PubSubBroker" ]
-	  }
-	],
 	"durable_objects": {
 	  "bindings": [
 		{
-		  "class_name": "PubSubBroker",
-		  "name": "PUBSUB_BROKER"
+		  "name": "PUBSUB_BROKER",
+		  "class_name": "PubSubBroker"
 		}
 	  ]
 	},
-
-	"vars": {
-		"JWT_AUD": "air780e",
-		"JWT_ISS": "cf-gateway",
-		"JWT_TTL": "300"
-	},
+  
+	"migrations": [
+	  {
+		"tag": "v5",
+		"new_sqlite_classes": ["PubSubBroker"]
+	  }
+	],
+  
 	"assets": {
-		"directory": "./public",
-		"binding": "ASSETS"
+	  "directory": "./public"
+	},
+  
+	"vars": {
+	  "JWT_AUD": "air780e",
+	  "JWT_ISS": "cf-gateway",
+	  "JWT_TTL": "300"
 	}
   }

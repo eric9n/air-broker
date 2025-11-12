@@ -1,125 +1,258 @@
 <!doctype html>
-<html>
+<html lang="zh">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Air780E SMS Reply</title>
+<title>Air780E 短信控制台</title>
 <style>
-body {
-  font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial;
-  margin: 20px; max-width: 500px;
-}
-h2 { text-align: center; }
-input, textarea { width: 100%; font-size: 16px; margin-top: 8px; box-sizing: border-box; }
-button {
-  width: 100%; padding: 10px; margin-top: 15px;
-  background-color: #007aff; color: #fff; font-size: 17px;
-  border: none; border-radius: 8px;
-}
-#status { margin-bottom: 10px; text-align: center; color: #666; font-size: 14px; }
+  :root { --blue:#007aff; --bg:#f6f6f6; }
+  body { font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",Helvetica,Arial; margin:20px; max-width:820px; }
+  h2 { text-align:center; margin-top:0; }
+  .row { display:flex; gap:10px; align-items:center; margin:10px 0; }
+  .grow { flex:1 1 auto; }
+  input, textarea, select { width:100%; font-size:16px; margin-top:6px; padding:8px; box-sizing:border-box; }
+  button { padding:10px 14px; background:var(--blue); color:#fff; border:0; border-radius:8px; font-size:16px; cursor:pointer; }
+  button.ghost { background:#e9eef9; color:#1a1a1a; }
+  #status { margin:8px 0 14px; text-align:center; color:#666; font-size:14px; }
+  #log { margin-top:18px; font-family:monospace; background:var(--bg); border-radius:6px; padding:10px; height:200px; overflow-y:auto; white-space:pre-wrap; }
+  .section { background:#fff; padding:12px; border-radius:8px; box-shadow:0 1px 2px rgba(0,0,0,.04); margin-top:12px; }
+  table { width:100%; border-collapse:collapse; background:#fff; }
+  th, td { padding:8px; border-bottom:1px solid #eee; font-size:14px; }
+  tr.clickable { cursor:pointer; }
+  tr.clickable:hover { background:#fafafa; }
+  .pill { font-size:12px; background:#eef2ff; color:#334155; padding:2px 8px; border-radius:999px; }
+  .status-dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; vertical-align:middle; }
+  .online { background:#16a34a; }  .offline { background:#9ca3af; }
 </style>
 </head>
 <body>
 
-<h2>📩 回复短信</h2>
-<div id="status">正在初始化...</div>
+<h2>📩 Air780E 短信控制台</h2>
+<div id="status">初始化中...</div>
 
-<label>发送给 (手机号):</label>
-<input id="to" type="text" placeholder="请输入手机号" />
+<div class="section">
+  <div class="row">
+    <div class="grow">
+      <label>选择设备</label>
+      <select id="deviceSelect"></select>
+    </div>
+    <div>
+      <button id="refreshDevicesBtn" class="ghost">刷新设备</button>
+    </div>
+    <div><span class="pill" id="devicesInfo">—</span></div>
+  </div>
+  <table id="devicesTable">
+    <thead><tr><th>设备ID</th><th>状态</th><th>最后在线</th></tr></thead>
+    <tbody></tbody>
+  </table>
+</div>
 
-<label>短信内容:</label>
-<textarea id="content" rows="5" placeholder="请输入要发送的内容"></textarea>
+<div class="section">
+  <div class="row">
+    <div class="grow"><strong>临时通讯录</strong></div>
+    <button id="refreshContactsBtn" class="ghost">刷新通讯录</button>
+    <span class="pill" id="contactsInfo">—</span>
+  </div>
+  <table id="contactsTable">
+    <thead><tr><th>号码</th><th>姓名</th><th>最近出现</th></tr></thead>
+    <tbody></tbody>
+  </table>
+</div>
 
-<button id="sendBtn">发送短信</button>
+<div class="section">
+  <label>发送给 (手机号)</label>
+  <input id="to" type="text" placeholder="请输入手机号" />
+  <label style="margin-top:8px; display:block;">短信内容</label>
+  <textarea id="content" rows="4" placeholder="请输入要发送的内容"></textarea>
+  <div class="row">
+    <button id="sendBtn" class="grow">发送短信</button>
+    <button id="clearBtn" class="ghost">清空</button>
+  </div>
+</div>
+
+<div id="log" class="section" style="height:auto; max-height:220px;"></div>
 
 <script>
-(async () => {
-  const qs = new URLSearchParams(location.search);
-  const device = qs.get("device") || "";
-  const toParam = qs.get("to") || "";
-  const statusEl = document.getElementById("status");
-  const btn = document.getElementById("sendBtn");
-  const toInput = document.getElementById("to");
-  const contentInput = document.getElementById("content");
-  toInput.value = toParam;
-
-  // 修改为你的域名
-  const WS_URL = "wss://broker.dagow.me/ws";
+  (async function(){
+    const statusEl   = document.getElementById("status");
+    const logEl      = document.getElementById("log");
+    const deviceSel  = document.getElementById("deviceSelect");
+    const devicesTbl = document.querySelector("#devicesTable tbody");
+    const devicesInfo= document.getElementById("devicesInfo");
+    const refreshDev = document.getElementById("refreshDevicesBtn");
   
-  let ws, token;
-
-  async function getToken() {
+    const contactsTbl= document.querySelector("#contactsTable tbody");
+    const contactsInfo = document.getElementById("contactsInfo");
+    const refreshCt  = document.getElementById("refreshContactsBtn");
+  
+    const toEl       = document.getElementById("to");
+    const contentEl  = document.getElementById("content");
+    const sendBtn    = document.getElementById("sendBtn");
+    const clearBtn   = document.getElementById("clearBtn");
+  
+    function appendLog(msg, color="#333") {
+      const line = document.createElement("div");
+      line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+      line.style.color = color;
+      logEl.appendChild(line);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+  
+    const fmtTime = ts => {
+      if (!ts) return "-";
+      const ms = ts > 1e12 ? ts : ts*1000;
+      return new Date(ms).toLocaleString();
+    };
+    const statusDot = s => `<span class="status-dot ${s==='online'?'online':'offline'}"></span>${s||'-'}`;
+  
+    // 1️⃣ 获取短期 JWT
+    statusEl.textContent = "正在请求 JWT 令牌...";
+    let token;
     try {
       const r = await fetch("/token", { credentials: "include" });
-      if (!r.ok) throw new Error("Token 请求失败: " + r.status);
-      const data = await r.json();
-      token = data.token;
-      return token;
+      if (!r.ok) throw new Error(r.statusText);
+      ({ token } = await r.json());
+      appendLog("✅ 成功获取 JWT 令牌");
     } catch (e) {
-      statusEl.textContent = "❌ 未登录或 Token 获取失败，请登录后刷新页面。";
-      console.error("Token error:", e);
-      return null;
-    }
-  }
-
-  async function connect() {
-    if (!token) {
-      token = await getToken();
-      if (!token) return; // 没有 token 就不再继续
-    }
-
-    statusEl.textContent = "🔌 正在连接 WebSocket...";
-    ws = new WebSocket(WS_URL + "?jwt=" + encodeURIComponent(token));
-
-    ws.onopen = () => {
-      statusEl.textContent = "✅ 已连接到服务器";
-    };
-
-    ws.onmessage = (evt) => {
-      console.log("收到消息:", evt.data);
-      try {
-        const msg = JSON.parse(evt.data);
-        if (msg.topic && msg.payload) {
-          statusEl.textContent = "📬 收到反馈: " + JSON.stringify(msg.payload);
-        }
-      } catch {
-        statusEl.textContent = "📩 收到原始消息";
-      }
-    };
-
-    ws.onclose = () => {
-      statusEl.textContent = "⚠️ 连接断开，5秒后重试...";
-      setTimeout(connect, 5000);
-    };
-
-    ws.onerror = (err) => {
-      console.error("WebSocket 错误:", err);
-      statusEl.textContent = "⚠️ WebSocket 错误";
-    };
-  }
-
-  btn.onclick = function() {
-    const to = toInput.value.trim();
-    const msg = contentInput.value.trim();
-    if (!to || !msg) { alert("请输入手机号和内容"); return; }
-    if (!ws || ws.readyState !== WebSocket.OPEN) {
-      alert("WebSocket 未连接，请稍后再试");
+      statusEl.textContent = "❌ 无法获取令牌（可能未通过 Access 授权）";
+      appendLog("获取 JWT 失败: " + e.message, "red");
       return;
     }
-
-    const topic = "air780e/command/" + device;
-    const payload = {
-      command: "send_sms",
-      to, content: msg
+  
+    // 2️⃣ 建立 WebSocket（仅一次，不自动重连）
+    let ws = null;
+    let wsAttempted = false;
+  
+    async function openWSOnce() {
+      if (wsAttempted) return ws;
+      wsAttempted = true;
+  
+      statusEl.textContent = "正在连接 WebSocket...";
+      const wsUrl = `wss://${location.host}/ws?token=${encodeURIComponent(token)}`;
+      ws = new WebSocket(wsUrl);
+  
+      ws.addEventListener("open", () => {
+        statusEl.textContent = "✅ 已连接到服务器（不自动重连）";
+        appendLog("WebSocket 已连接", "green");
+        sendBtn.disabled = false;
+      });
+  
+      ws.addEventListener("message", (e) => {
+        appendLog("WS: " + e.data);
+      });
+  
+      // 断开/错误后不再自动重连
+      function markClosed(reason) {
+        sendBtn.disabled = true;
+        statusEl.textContent = `⚠️ 连接已关闭：${reason || "已断开"}`;
+        appendLog(`WebSocket 已关闭：${reason || ""}`, "red");
+      }
+  
+      ws.addEventListener("close", (ev) => {
+        markClosed(`code=${ev.code}`);
+      });
+      ws.addEventListener("error", (e) => {
+        markClosed("发生错误");
+      });
+  
+      return ws;
+    }
+  
+    await openWSOnce();
+  
+    // 3️⃣ 加载设备列表
+    async function fetchDevices() {
+      devicesTbl.innerHTML = "";
+      devicesInfo.textContent = "加载中…";
+      try {
+        const r = await fetch("/devices", { credentials: "include" });
+        if (!r.ok) throw new Error(r.statusText);
+        const list = await r.json();
+        devicesInfo.textContent = `共 ${list.length} 台`;
+        deviceSel.innerHTML = "";
+        list.forEach((d,i) => {
+          const opt = document.createElement("option");
+          opt.value = d.device_id;
+          opt.textContent = `${d.device_id} (${d.status||'-'})`;
+          if (i===0) opt.selected = true;
+          deviceSel.appendChild(opt);
+  
+          const tr = document.createElement("tr");
+          tr.className = "clickable";
+          tr.innerHTML = `<td>${d.device_id}</td><td>${statusDot(d.status)}</td><td>${fmtTime(d.last_seen)}</td>`;
+          tr.addEventListener("click", () => {
+            deviceSel.value = d.device_id;
+            fetchContacts();
+          });
+          devicesTbl.appendChild(tr);
+        });
+        if (list.length) fetchContacts();
+        else { contactsTbl.innerHTML = ""; contactsInfo.textContent = "无设备"; }
+      } catch (e) {
+        devicesInfo.textContent = "加载失败";
+        appendLog("加载设备失败: " + e.message, "red");
+      }
+    }
+    refreshDev.addEventListener("click", fetchDevices);
+    deviceSel.addEventListener("change", fetchContacts);
+    await fetchDevices();
+  
+    // 4️⃣ 加载通讯录
+    async function fetchContacts() {
+      contactsTbl.innerHTML = "";
+      const dev = deviceSel.value;
+      if (!dev) { contactsInfo.textContent = "未选择设备"; return; }
+      contactsInfo.textContent = "加载中…";
+      try {
+        let r = await fetch(`/contacts/${encodeURIComponent(dev)}`, { credentials: "include" });
+        if (!r.ok) r = await fetch(`/contacts?device=${encodeURIComponent(dev)}`, { credentials: "include" });
+        if (!r.ok) throw new Error(r.statusText);
+        const list = await r.json();
+        contactsInfo.textContent = `共 ${list.length} 个`;
+        list.forEach(c => {
+          const tr = document.createElement("tr");
+          tr.className = "clickable";
+          tr.innerHTML = `<td>${c.number}</td><td>${c.name || "-"}</td><td>${fmtTime(c.last_seen)}</td>`;
+          tr.addEventListener("click", () => {
+            toEl.value = c.number;
+            appendLog(`选择联系人: ${c.number}${c.name?("（"+c.name+"）"):""}`);
+          });
+          contactsTbl.appendChild(tr);
+        });
+      } catch (e) {
+        contactsInfo.textContent = "加载失败";
+        appendLog("加载通讯录失败: " + e.message, "red");
+      }
+    }
+    refreshCt.addEventListener("click", fetchContacts);
+  
+    // 5️⃣ 发送短信
+    sendBtn.onclick = function() {
+      const dev = deviceSel.value;
+      const to = toEl.value.trim();
+      const content = contentEl.value.trim();
+      if (!dev || !to || !content) {
+        alert("请选择设备并填写手机号与内容");
+        return;
+      }
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        appendLog("WebSocket 未连接（请刷新页面重新获取连接）", "red");
+        alert("连接未就绪，请刷新页面后重试");
+        return;
+      }
+  
+      const msg = {
+        action: "publish",
+        topic: `air780e/command/${dev}`,
+        payload: { command: "send_sms", to, content }
+      };
+      ws.send(JSON.stringify(msg));
+      appendLog(`📤 发送给 ${to}: ${content}`, "blue");
+      contentEl.value = "";
     };
-    const data = { action: "publish", topic, payload };
-    ws.send(JSON.stringify(data));
-    statusEl.textContent = "📤 已发送到设备：" + to;
-    contentInput.value = "";
-  };
-
-  await connect();
-})();
-</script>
+  
+    clearBtn.onclick = () => { toEl.value = ""; contentEl.value = ""; };
+  })();
+  </script>
 </body>
 </html>
