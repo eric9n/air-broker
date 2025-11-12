@@ -1,0 +1,125 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Air780E SMS Reply</title>
+<style>
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial;
+  margin: 20px; max-width: 500px;
+}
+h2 { text-align: center; }
+input, textarea { width: 100%; font-size: 16px; margin-top: 8px; box-sizing: border-box; }
+button {
+  width: 100%; padding: 10px; margin-top: 15px;
+  background-color: #007aff; color: #fff; font-size: 17px;
+  border: none; border-radius: 8px;
+}
+#status { margin-bottom: 10px; text-align: center; color: #666; font-size: 14px; }
+</style>
+</head>
+<body>
+
+<h2>📩 回复短信</h2>
+<div id="status">正在初始化...</div>
+
+<label>发送给 (手机号):</label>
+<input id="to" type="text" placeholder="请输入手机号" />
+
+<label>短信内容:</label>
+<textarea id="content" rows="5" placeholder="请输入要发送的内容"></textarea>
+
+<button id="sendBtn">发送短信</button>
+
+<script>
+(async () => {
+  const qs = new URLSearchParams(location.search);
+  const device = qs.get("device") || "";
+  const toParam = qs.get("to") || "";
+  const statusEl = document.getElementById("status");
+  const btn = document.getElementById("sendBtn");
+  const toInput = document.getElementById("to");
+  const contentInput = document.getElementById("content");
+  toInput.value = toParam;
+
+  // 修改为你的域名
+  const WS_URL = "wss://broker.dagow.me/ws";
+  
+  let ws, token;
+
+  async function getToken() {
+    try {
+      const r = await fetch("/token", { credentials: "include" });
+      if (!r.ok) throw new Error("Token 请求失败: " + r.status);
+      const data = await r.json();
+      token = data.token;
+      return token;
+    } catch (e) {
+      statusEl.textContent = "❌ 未登录或 Token 获取失败，请登录后刷新页面。";
+      console.error("Token error:", e);
+      return null;
+    }
+  }
+
+  async function connect() {
+    if (!token) {
+      token = await getToken();
+      if (!token) return; // 没有 token 就不再继续
+    }
+
+    statusEl.textContent = "🔌 正在连接 WebSocket...";
+    ws = new WebSocket(WS_URL + "?jwt=" + encodeURIComponent(token));
+
+    ws.onopen = () => {
+      statusEl.textContent = "✅ 已连接到服务器";
+    };
+
+    ws.onmessage = (evt) => {
+      console.log("收到消息:", evt.data);
+      try {
+        const msg = JSON.parse(evt.data);
+        if (msg.topic && msg.payload) {
+          statusEl.textContent = "📬 收到反馈: " + JSON.stringify(msg.payload);
+        }
+      } catch {
+        statusEl.textContent = "📩 收到原始消息";
+      }
+    };
+
+    ws.onclose = () => {
+      statusEl.textContent = "⚠️ 连接断开，5秒后重试...";
+      setTimeout(connect, 5000);
+    };
+
+    ws.onerror = (err) => {
+      console.error("WebSocket 错误:", err);
+      statusEl.textContent = "⚠️ WebSocket 错误";
+    };
+  }
+
+  btn.onclick = function() {
+    const to = toInput.value.trim();
+    const msg = contentInput.value.trim();
+    if (!to || !msg) { alert("请输入手机号和内容"); return; }
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      alert("WebSocket 未连接，请稍后再试");
+      return;
+    }
+
+    const topic = "air780e/command/" + device;
+    const payload = {
+      command: "send_sms",
+      to, content: msg
+    };
+    const data = { action: "publish", topic, payload };
+    ws.send(JSON.stringify(data));
+    statusEl.textContent = "📤 已发送到设备：" + to;
+    contentInput.value = "";
+  };
+
+  await connect();
+})();
+</script>
+</body>
+</html>
