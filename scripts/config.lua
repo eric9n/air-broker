@@ -67,8 +67,8 @@ return {
     --
     -- dingtalk 通知配置, https://open.dingtalk.com/document/robots/custom-robot-access
     -- 如果是加签方式, 请填写 DINGTALK_SECRET, 否则留空为自定义关键词方式, https://open.dingtalk.com/document/robots/customize-robot-security-settings
-    DINGTALK_WEBHOOK = secret.DINGTALK_WEBHOOK,
-    DINGTALK_SECRET = secret.DINGTALK_SECRET,
+    DINGTALK_WEBHOOK = secret.DINGTALK_WEBHOOK or "",
+    DINGTALK_SECRET = secret.DINGTALK_SECRET or "",
     --
     -- feishu 通知配置, https://open.feishu.cn/document/ukTMukTMukTM/ucTM5YjL3ETO24yNxkjN
     FEISHU_WEBHOOK = "",
