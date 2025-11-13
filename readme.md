@@ -55,22 +55,29 @@ Air780E (scripts/*.lua)
 
 ---
 
+## ⚡️ 快速开始
+
+**Worker / 控制台**
+1. `git clone` 本项目并进入目录，执行 `npm install`。
+2. 在 `.dev.vars`（或 `wrangler secrets/vars`）中填入 `VALID_CODES`、`SESSION_SECRET`、`DEVICE_TOKENS` 等环境变量。
+3. `npx wrangler login`（首次使用需要授权账户）。
+4. `npm run dev` 启动本地 Worker，浏览器打开 `http://127.0.0.1:8787/sms-reply.html`，按提示输入访问码。
+5. 验证 `/devices`、`/contacts`、WebSocket 是否正常，再执行 `npm run deploy` 上云。
+
+**Air780E 设备**
+1. 将 `scripts/` 内 Lua 文件推送到设备或合并进既有工程。
+2. 在 `scripts/secrets.lua` 中设置 `DEVICE_ID`、`DEVICE_TOKEN`、`WSS_URL` 以及需要的通知密钥。
+3. 设备上电联网后会自动连接 `wss://.../ws?device=<id>&dtoken=<token>`，几秒内能在控制台看到在线状态。
+4. 在网页端选择对应设备并尝试发送短信校验收发链路。
+
+---
+
 ## ✅ 前置条件
 - Node.js **18+**
 - `npm` / `pnpm` / `yarn`
 - Cloudflare 帐号 + **Wrangler 4.x**
 - 已启用 Durable Objects（`PubSubBroker`）
 - Air780E 固件（LuaTask）可联网
-
-安装依赖：
-
-```bash
-npm install
-```
-
-> `generate-token.js` 需要 `dotenv` 与 `jose`；如果没安装请运行 `npm install dotenv jose`.
-
----
 
 ## 🔐 运行所需配置
 
@@ -201,19 +208,23 @@ npx wrangler deploy             # 推送 Worker + DO schema/迁移
 2. 使用 LuatOS IDE 将 `scripts/` 整体烧录到 Air780E。
 3. 设备联网后即可出现在 `/devices` 列表，在线状态应为 green。
 
----
+### `scripts/secrets.lua` 示例
 
-## 🔧 设备 JWT（可选）
-虽然当前 Worker 通过 `DEVICE_TOKENS` 校验 Query Token，但仍提供 `generate-token.js` 便于扩展为 JWT 方案：
+```lua
+return {
+  DEVICE_ID    = "185",
+  DEVICE_TOKEN = "76689",
+  TRANSPORT    = "wss",      -- 可选：wss/mqtt/none
+  WSS_URL      = "wss://broker.example.com/ws",
 
-```bash
-echo "JWT_MASTER_SECRET=base64-encoded-secret" > .env
-node generate-token.js 185 2001
+  -- 通知配置（按需开启）
+  BARK_KEY = "xxxxxxxxxxxxxxxxxxxx",
+}
 ```
 
-脚本会为每个设备打印一个有效期到 2035-01-01 的 HS256 JWT，便于后续切换到 Bearer Token 或其它服务中重用。
-
----
+- 推荐把 `scripts/secrets.lua` 加入版本控制忽略列表，只在本地或 CI 中注入。
+- `TRANSPORT` 默认为 `wss`，若切换到 MQTT 需要同步调整 `config.lua` 的 MQTT 相关参数。
+- 如果需要自定义通知渠道（Bark、Telegram 等），可直接在 `secrets.lua` 中写入各自的密钥/URL。
 
 ## 📂 项目结构
 
