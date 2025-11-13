@@ -42,7 +42,7 @@ return {
 
     -- 通知类型, 支持配置多个
     -- NOTIFY_TYPE = { "custom_post", "telegram", "pushdeer", "bark", "dingtalk", "feishu", "wecom", "pushover", "inotify", "next-smtp-proxy", "gotify", "serial" },
-    NOTIFY_TYPE = {"bark"},
+    NOTIFY_TYPE = secret.NOTIFY_TYPE or {"bark"},
     --
     -- 角色类型, 用于区分主从机, 仅当使用串口转发 NOTIFY_TYPE = "serial" 时才需要配置
     -- MASTER: 主机, 可主动联网; SLAVE: 从机, 不可主动联网, 通过串口发送数据
