@@ -232,6 +232,9 @@ sys.subscribe("CC_IND", function(status)
         is_calling = false
         log.info("cc_status", "DISCONNECTED", "挂断事件", cc.lastNum())
 
+        if util_wss and util_wss.report_contact and config.TRANSPORT == "wss" then
+            util_wss.report_contact(cc.lastNum(), nil, os.time())
+        end
         -- 发送通知
         util_notify.add({ "来电号码: " .. cc.lastNum(), "挂断时间: " .. os.date("%Y-%m-%d %H:%M:%S"), "#CALL #CALL_DISCONNECTED" })
         return

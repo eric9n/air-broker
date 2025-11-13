@@ -30,11 +30,7 @@ return {
 
     -- 您的 WSS 服务器地址
     WSS_URL = secret.WSS_URL,
-
-    -- 您的设备专属 JWT 令牌 (包含 "Bearer " 前缀)
-    -- [[ 替换成您的 Air780E 令牌 ]]
-    JWT_TOKEN = secret.JWT_TOKEN,
-
+    DEVICE_TOKEN = secret.DEVICE_TOKEN or "",
     -- (高级) WSS 订阅和发布的主题
     SUB_TOPIC_BASE = "air780e/command/",
     -- 用于发送回执

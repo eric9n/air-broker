@@ -23,6 +23,8 @@
   .pill { font-size:12px; background:#eef2ff; color:#334155; padding:2px 8px; border-radius:999px; }
   .status-dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; vertical-align:middle; }
   .online { background:#16a34a; }  .offline { background:#9ca3af; }
+  .badge { display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px; margin-left:8px; }
+  .ok { background:#e6f7ec; color:#0f7a3e; } .fail { background:#fde8e8; color:#b42318; }
 </style>
 </head>
 <body>
@@ -64,195 +66,14 @@
   <input id="to" type="text" placeholder="请输入手机号" />
   <label style="margin-top:8px; display:block;">短信内容</label>
   <textarea id="content" rows="4" placeholder="请输入要发送的内容"></textarea>
-  <div class="row">
+  <div class="row" style="align-items:center;">
     <button id="sendBtn" class="grow">发送短信</button>
     <button id="clearBtn" class="ghost">清空</button>
+    <span id="ack" class="badge" style="display:none;"></span>
   </div>
 </div>
 
 <div id="log" class="section" style="height:auto; max-height:220px;"></div>
-
-<script>
-  (async function(){
-    const statusEl   = document.getElementById("status");
-    const logEl      = document.getElementById("log");
-    const deviceSel  = document.getElementById("deviceSelect");
-    const devicesTbl = document.querySelector("#devicesTable tbody");
-    const devicesInfo= document.getElementById("devicesInfo");
-    const refreshDev = document.getElementById("refreshDevicesBtn");
-  
-    const contactsTbl= document.querySelector("#contactsTable tbody");
-    const contactsInfo = document.getElementById("contactsInfo");
-    const refreshCt  = document.getElementById("refreshContactsBtn");
-  
-    const toEl       = document.getElementById("to");
-    const contentEl  = document.getElementById("content");
-    const sendBtn    = document.getElementById("sendBtn");
-    const clearBtn   = document.getElementById("clearBtn");
-  
-    function appendLog(msg, color="#333") {
-      const line = document.createElement("div");
-      line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
-      line.style.color = color;
-      logEl.appendChild(line);
-      logEl.scrollTop = logEl.scrollHeight;
-    }
-  
-    const fmtTime = ts => {
-      if (!ts) return "-";
-      const ms = ts > 1e12 ? ts : ts*1000;
-      return new Date(ms).toLocaleString();
-    };
-    const statusDot = s => `<span class="status-dot ${s==='online'?'online':'offline'}"></span>${s||'-'}`;
-  
-    // 1️⃣ 获取短期 JWT
-    statusEl.textContent = "正在请求 JWT 令牌...";
-    let token;
-    try {
-      const r = await fetch("/token", { credentials: "include" });
-      if (!r.ok) throw new Error(r.statusText);
-      ({ token } = await r.json());
-      appendLog("✅ 成功获取 JWT 令牌");
-    } catch (e) {
-      statusEl.textContent = "❌ 无法获取令牌（可能未通过 Access 授权）";
-      appendLog("获取 JWT 失败: " + e.message, "red");
-      return;
-    }
-  
-    // 2️⃣ 建立 WebSocket（仅一次，不自动重连）
-    let ws = null;
-    let wsAttempted = false;
-  
-    async function openWSOnce() {
-      if (wsAttempted) return ws;
-      wsAttempted = true;
-  
-      statusEl.textContent = "正在连接 WebSocket...";
-      const wsUrl = `wss://${location.host}/ws?token=${encodeURIComponent(token)}`;
-      ws = new WebSocket(wsUrl);
-  
-      ws.addEventListener("open", () => {
-        statusEl.textContent = "✅ 已连接到服务器（不自动重连）";
-        appendLog("WebSocket 已连接", "green");
-        sendBtn.disabled = false;
-      });
-  
-      ws.addEventListener("message", (e) => {
-        appendLog("WS: " + e.data);
-      });
-  
-      // 断开/错误后不再自动重连
-      function markClosed(reason) {
-        sendBtn.disabled = true;
-        statusEl.textContent = `⚠️ 连接已关闭：${reason || "已断开"}`;
-        appendLog(`WebSocket 已关闭：${reason || ""}`, "red");
-      }
-  
-      ws.addEventListener("close", (ev) => {
-        markClosed(`code=${ev.code}`);
-      });
-      ws.addEventListener("error", (e) => {
-        markClosed("发生错误");
-      });
-  
-      return ws;
-    }
-  
-    await openWSOnce();
-  
-    // 3️⃣ 加载设备列表
-    async function fetchDevices() {
-      devicesTbl.innerHTML = "";
-      devicesInfo.textContent = "加载中…";
-      try {
-        const r = await fetch("/devices", { credentials: "include" });
-        if (!r.ok) throw new Error(r.statusText);
-        const list = await r.json();
-        devicesInfo.textContent = `共 ${list.length} 台`;
-        deviceSel.innerHTML = "";
-        list.forEach((d,i) => {
-          const opt = document.createElement("option");
-          opt.value = d.device_id;
-          opt.textContent = `${d.device_id} (${d.status||'-'})`;
-          if (i===0) opt.selected = true;
-          deviceSel.appendChild(opt);
-  
-          const tr = document.createElement("tr");
-          tr.className = "clickable";
-          tr.innerHTML = `<td>${d.device_id}</td><td>${statusDot(d.status)}</td><td>${fmtTime(d.last_seen)}</td>`;
-          tr.addEventListener("click", () => {
-            deviceSel.value = d.device_id;
-            fetchContacts();
-          });
-          devicesTbl.appendChild(tr);
-        });
-        if (list.length) fetchContacts();
-        else { contactsTbl.innerHTML = ""; contactsInfo.textContent = "无设备"; }
-      } catch (e) {
-        devicesInfo.textContent = "加载失败";
-        appendLog("加载设备失败: " + e.message, "red");
-      }
-    }
-    refreshDev.addEventListener("click", fetchDevices);
-    deviceSel.addEventListener("change", fetchContacts);
-    await fetchDevices();
-  
-    // 4️⃣ 加载通讯录
-    async function fetchContacts() {
-      contactsTbl.innerHTML = "";
-      const dev = deviceSel.value;
-      if (!dev) { contactsInfo.textContent = "未选择设备"; return; }
-      contactsInfo.textContent = "加载中…";
-      try {
-        let r = await fetch(`/contacts/${encodeURIComponent(dev)}`, { credentials: "include" });
-        if (!r.ok) r = await fetch(`/contacts?device=${encodeURIComponent(dev)}`, { credentials: "include" });
-        if (!r.ok) throw new Error(r.statusText);
-        const list = await r.json();
-        contactsInfo.textContent = `共 ${list.length} 个`;
-        list.forEach(c => {
-          const tr = document.createElement("tr");
-          tr.className = "clickable";
-          tr.innerHTML = `<td>${c.number}</td><td>${c.name || "-"}</td><td>${fmtTime(c.last_seen)}</td>`;
-          tr.addEventListener("click", () => {
-            toEl.value = c.number;
-            appendLog(`选择联系人: ${c.number}${c.name?("（"+c.name+"）"):""}`);
-          });
-          contactsTbl.appendChild(tr);
-        });
-      } catch (e) {
-        contactsInfo.textContent = "加载失败";
-        appendLog("加载通讯录失败: " + e.message, "red");
-      }
-    }
-    refreshCt.addEventListener("click", fetchContacts);
-  
-    // 5️⃣ 发送短信
-    sendBtn.onclick = function() {
-      const dev = deviceSel.value;
-      const to = toEl.value.trim();
-      const content = contentEl.value.trim();
-      if (!dev || !to || !content) {
-        alert("请选择设备并填写手机号与内容");
-        return;
-      }
-      if (!ws || ws.readyState !== WebSocket.OPEN) {
-        appendLog("WebSocket 未连接（请刷新页面重新获取连接）", "red");
-        alert("连接未就绪，请刷新页面后重试");
-        return;
-      }
-  
-      const msg = {
-        action: "publish",
-        topic: `air780e/command/${dev}`,
-        payload: { command: "send_sms", to, content }
-      };
-      ws.send(JSON.stringify(msg));
-      appendLog(`📤 发送给 ${to}: ${content}`, "blue");
-      contentEl.value = "";
-    };
-  
-    clearBtn.onclick = () => { toEl.value = ""; contentEl.value = ""; };
-  })();
-  </script>
+<script src="./sms-console.js"></script>
 </body>
 </html>

@@ -25,8 +25,8 @@
 	},
   
 	"vars": {
-	  "JWT_AUD": "air780e",
-	  "JWT_ISS": "cf-gateway",
-	  "JWT_TTL": "300"
+	  "SMS_LIMIT_PER_DEVICE": "10",
+	  "SMS_LIMIT_PER_NUMBER": "5",
+	  "SMS_WINDOW_MINUTES": "60"
 	}
   }
